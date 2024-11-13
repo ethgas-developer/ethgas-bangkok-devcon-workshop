@@ -1,0 +1,90 @@
+version: '3.1'
+
+volumes:
+  psql_data:
+    driver: local
+
+services:
+  redis:
+    image: redis
+    restart: always
+    ports:
+      - '6379:6379'
+    networks:
+      - relay_network
+
+  memcached:
+    image: memcached
+    restart: always
+    ports:
+      - '11211:11211'
+    networks:
+      - relay_network
+
+  db:
+    image: postgres
+    restart: always
+    volumes:
+      - 'psql_data:/var/lib/postgresql/data'
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    networks:
+      - relay_network
+
+  adminer:
+    image: adminer
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - '8093:8080'
+    environment:
+      ADMINER_PLUGINS: tables-filter tinymce
+    networks:
+      - relay_network
+
+  ethgas-mev-boost-relay-api:
+    image: ghcr.io/ethgas-developer/mev-boost-relay
+    depends_on:
+      - db
+    ports:
+      - "9062:9062"
+    environment:
+      REDIS_URI: redis:6379
+      BEACON_URIS: http://host.docker.internal:3500
+      LISTEN_ADDR: 0.0.0.0:9062
+      GENESIS_FORK_VERSION: "0x20000089"
+      GENESIS_VALIDATORS_ROOT: "0x9624293efb019b5252a8be86736907ef1cd263cefc17f4e10bcf7e266d42f02d"
+      BELLATRIX_FORK_VERSION: "0x20000091"
+      CAPELLA_FORK_VERSION: "0x20000092"
+      DENEB_FORK_VERSION: "0x20000093"
+    command: >
+      api --network custom --secret-key 0x565dc4de5a12050b274836a9fcfd7444318481c81ed97bdde2bfa553c6b1ba38 --db postgres://postgres:postgres@db:5432/postgres?sslmode=disable
+    networks:
+      - relay_network
+
+  ethgas-mev-boost-relay-housekeeper:
+    image: ghcr.io/ethgas-developer/mev-boost-relay
+    depends_on:
+      - db
+    environment:
+      REDIS_URI: redis:6379
+      BEACON_URIS: http://host.docker.internal:3500
+      LISTEN_ADDR: 0.0.0.0:9062
+      GENESIS_FORK_VERSION: "0x20000089"
+      GENESIS_VALIDATORS_ROOT: "0x9624293efb019b5252a8be86736907ef1cd263cefc17f4e10bcf7e266d42f02d"
+      BELLATRIX_FORK_VERSION: "0x20000091"
+      CAPELLA_FORK_VERSION: "0x20000092"
+      DENEB_FORK_VERSION: "0x20000093"
+    command: >
+      housekeeper --network custom --db postgres://postgres:postgres@db:5432/postgres?sslmode=disable
+    networks:
+      - relay_network
+
+networks:
+  relay_network:
+    driver: bridge
